@@ -1,10 +1,27 @@
 import os
+import threading
+from flask import Flask
 import telebot
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton
 
 # ========== TOKEN ==========
-TOKEN = os.environ.get("TOKEN", "8956591210:AAGRDfVvG3Mg7uDSxJSkFMrEaEb4B4swcfw")
+# Tokenni Render'da Environment Variable sifatida qo'shing! Kodga yozmang.
+TOKEN = os.environ.get("TOKEN")
+if not TOKEN:
+    raise ValueError("TOKEN environment variable topilmadi! Render > Environment bo'limiga qo'shing.")
+
 bot = telebot.TeleBot(TOKEN)
+
+# ========== Flask (Render portni ochish uchun) ==========
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot ishlayapti!"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
 
 # ========== Tillar ==========
 LANG = {}
@@ -52,7 +69,7 @@ def set_lang(message):
 @bot.message_handler(func=lambda message: True)
 def reply(message):
     lang = LANG.get(message.chat.id, 'uz')
-    
+
     if lang == 'uz':
         bot.send_message(
             message.chat.id,
@@ -72,5 +89,11 @@ def reply(message):
             "⏳ We will reply soon."
         )
 
-print("🤖 Bot ishga tushdi...")
-bot.polling()
+if __name__ == "__main__":
+    # Flask serverni alohida thread'da ishga tushiramiz (Render port talabini qondirish uchun)
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+
+    print("🤖 Bot ishga tushdi...")
+    bot.infinity_polling()
