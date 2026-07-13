@@ -1,14 +1,14 @@
+import os
 import telebot
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton
 
 # ========== TOKEN ==========
-TOKEN = "8956591210:AAGRDfVvG3Mg7uDSxJSkFMrEaEb4B4swcfw"
+TOKEN = os.environ.get("TOKEN", "8956591210:AAGRDfVvG3Mg7uDSxJSkFMrEaEb4B4swcfw")
 bot = telebot.TeleBot(TOKEN)
 
 # ========== Tillar ==========
 LANG = {}
 
-# ========== Til menyusi ==========
 def lang_menu():
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
     btn1 = KeyboardButton("🇺🇿 O'zbekcha")
@@ -17,7 +17,6 @@ def lang_menu():
     markup.add(btn1, btn2, btn3)
     return markup
 
-# ========== /start ==========
 @bot.message_handler(commands=['start'])
 def start(message):
     bot.send_message(
@@ -26,7 +25,6 @@ def start(message):
         reply_markup=lang_menu()
     )
 
-# ========== Til tanlash ==========
 @bot.message_handler(func=lambda message: message.text in ["🇺🇿 O'zbekcha", "🇷🇺 Русский", "🇬🇧 English"])
 def set_lang(message):
     if message.text == "🇺🇿 O'zbekcha":
@@ -51,7 +49,6 @@ def set_lang(message):
             "👋 Welcome! Write your question, we will reply soon."
         )
 
-# ========== Boshqa xabarlar ==========
 @bot.message_handler(func=lambda message: True)
 def reply(message):
     lang = LANG.get(message.chat.id, 'uz')
@@ -75,6 +72,5 @@ def reply(message):
             "⏳ We will reply soon."
         )
 
-# ========== Botni ishga tushirish ==========
 print("🤖 Bot ishga tushdi...")
 bot.polling()
