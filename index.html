@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Shaxmat - Zamonaviy O'yin</title>
+<style>
+  * { box-sizing: border-box; touch-action: manipulation; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    padding: 16px; font-family: 'Segoe UI', Tahoma, sans-serif;
+    background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
+    color: #eee;
+  }
+  .container {
+    background: rgba(255,255,255,0.06); backdrop-filter: blur(12px);
+    border-radius: 24px; padding: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    max-width: 480px; width: 100%; border: 1px solid rgba(255,255,255,0.1);
+  }
+  h1 {
+    text-align: center; margin: 0 0 16px; font-size: 26px;
+    background: linear-gradient(90deg, #f7d774, #f0a500);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .info-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 8px; flex-wrap: wrap; }
+  .turn-indicator { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; }
+  .turn-dot { width: 14px; height: 14px; border-radius: 50%; transition: .3s; }
+  .white-dot { background: #fff; box-shadow: 0 0 10px #fff; }
+  .black-dot { background: #111; border: 2px solid #fff; }
+  .reset-btn {
+    padding: 9px 22px; border: none; border-radius: 30px;
+    background: linear-gradient(90deg, #f0a500, #f7d774); color: #1a1a2e;
+    font-weight: 700; font-size: 14px; cursor: pointer;
+    box-shadow: 0 4px 14px rgba(240,165,0,0.4); transition: .15s;
+  }
+  .reset-btn:hover { transform: translateY(-2px); }
+  .status { text-align: center; min-height: 24px; font-weight: 700; color: #f7d774; margin-bottom: 6px; font-size: 15px; }
+  .captured-row { min-height: 26px; font-size: 18px; display: flex; gap: 2px; flex-wrap: wrap; opacity: 0.8; padding: 0 4px; }
+  #board {
+    display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr);
+    width: 100%; aspect-ratio: 1/1; border-radius: 12px; overflow: hidden;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.45); margin: 10px 0; border: 3px solid #0f3460;
+  }
+  .square { display: flex; align-items: center; justify-content: center; position: relative; cursor: pointer; font-size: clamp(20px, 7vw, 34px); transition: background .15s; }
+  .light { background: #f0d9b5; }
+  .dark { background: #946f51; }
+  .square.selected { background: #f0a500 !important; }
+  .square.last-move { background: #c9b458 !important; }
+  .square.in-check { background: #e74c3c !important; }
+  .square.legal-move::after { content: ''; position: absolute; width: 26%; height: 26%; border-radius: 50%; background: rgba(0,0,0,0.35); }
+  .square.legal-capture::after { content: ''; position: absolute; inset: 6%; border: 4px solid rgba(220,20,60,0.75); border-radius: 50%; }
+  .piece { user-select: none; pointer-events: none; transition: transform .15s; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5)); }
+  .square:hover .piece { transform: scale(1.12); }
+  @media (max-width: 380px) {
+    .info-bar { flex-direction: column; }
+    h1 { font-size: 22px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>♟️ Shaxmat</h1>
+  <div class="info-bar">
+    <div class="turn-indicator">
+      <span id="turnDot" class="turn-dot white-dot"></span>
+      <span id="turnIndicator">Oq navbati</span>
+    </div>
+    <button class="reset-btn" id="resetBtn">🔄 Yangi o'yin</button>
+  </div>
+  <div class="status" id="status"></div>
+  <div class="captured-row" id="capturedBlack" title="Yutilgan qora donalar"></div>
+  <div id="board"></div>
+  <div class="captured-row" id="capturedWhite" title="Yutilgan oq donalar"></div>
+</div>
+
+<script>
+const PIECES_UNICODE = {
+  w: { p:'♙', r:'♖', n:'♘', b:'♗', q:'♕', k:'♔' },
+  b: { p:'♟', r:'♜', n:'♞', b:'♝', q:'♛', k:'♚' }
+};
+
+let board, turn, selected, legalMovesForSelected, captured, gameOver, lastMove;
+
+function initBoard(){
+  const b = Array.from({length:8}, () => Array(8).fill(null));
+  const backRank = ['r','n','b','q','k','b','n','r'];
+  for (let c = 0; c < 8; c++) {
+    b[0][c] = { type: backRank[c], color: 'b' };
+    b[1][c] = { type: 'p', color: 'b' };
+    b[6][c] = { type: 'p', color: 'w' };
+    b[7][c] = { type: backRank[c], color: 'w' };
+  }
+  return b;
+}
+
+function newGame(){
+  board = initBoard();
+  turn = 'w';
+  selected = null;
+  legalMovesForSelected = [];
+  captured = { w: [], b: [] };
+  gameOver = false;
+  lastMove = null;
+  document.getElementById('status').textContent = '';
+  render();
+}
+
+function inBounds(r,c){ return r>=0 && r<8 && c>=0 && c<8; }
+
+function getSlidingAttacks(bd,row,col,dirs){
+  const attacks = [];
+  for (const [dr,dc] of dirs){
+    let r=row+dr, c=col+dc;
+    while (inBounds(r,c)){
+      attacks.push({row:r,col:c});
+      if (bd[r][c]) break;
+      r+=dr; c+=dc;
+    }
+  }
+  return attacks;
+}
+
+function getAttacks(bd,row,col){
+  const piece = bd[row][col];
+  if (!piece) return [];
+  const { type, color } = piece;
+  const attacks = [];
+  if (type==='p'){
+    const dir = color==='w' ? -1 : 1;
+    for (const dc of [-1,1]){
+      const r=row+dir, c=col+dc;
+      if (inBounds(r,c)) attacks.push({row:r,col:c});
+    }
+  } else if (type==='n'){
+    const deltas=[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+    for (const [dr,dc] of deltas){
+      const r=row+dr, c=col+dc;
+      if (inBounds(r,c)) attacks.push({row:r,col:c});
+    }
+  } else if (type==='b'){
+    attacks.push(...getSlidingAttacks(bd,row,col,[[-1,-1],[-1,1],[1,-1],[1,1]]));
+  } else if (type==='r'){
+    attacks.push(...getSlidingAttacks(bd,row,col,[[-1,0],[1,0],[0,-1],[0,1]]));
+  } else if (type==='q'){
+    attacks.push(...getSlidingAttacks(bd,row,col,[[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]]));
+  } else if (type==='k'){
+    for (let dr=-1; dr<=1; dr++) for (let dc=-1; dc<=1; dc++){
+      if (dr===0 && dc===0) continue;
+      const r=row+dr, c=col+dc;
+      if (inBounds(r,c)) attacks.push({row:r,col:c});
+    }
+  }
+  return attacks;
+}
+
+function isSquareAttacked(bd,row,col,byColor){
+  for (let r=0;r<8;r++) for (let c=0;c<8;c++){
+    const p = bd[r][c];
+    if (p && p.color===byColor){
+      const attacks = getAttacks(bd,r,c);
+      if (attacks.some(a => a.row===row && a.col===col)) return true;
+    }
+  }
+  return false;
+}
+
+function findKing(bd,color){
+  for (let r=0;r<8;r++) for (let c=0;c<8;c++){
+    const p = bd[r][c];
+    if (p && p.type==='k' && p.color===color) return {row:r,col:c};
+  }
+  return null;
+}
+
+function getPseudoMoves(bd,row,col){
+  const piece = bd[row][col];
+  if (!piece) return [];
+  const { type, color } = piece;
+  const moves = [];
+  if (type==='p'){
+    const dir = color==='w' ? -1 : 1;
+    const startRow = color==='w' ? 6 : 1;
+    const r1 = row+dir;
+    if (inBounds(r1,col) && !bd[r1][col]){
+      moves.push({row:r1,col});
+      const r2 = row+2*dir;
+      if (row===startRow && !bd[r2][col]) moves.push({row:r2,col});
+    }
+    for (const dc of [-1,1]){
+      const r=row+dir, c=col+dc;
+      if (inBounds(r,c) && bd[r][c] && bd[r][c].color!==color){
+        
